@@ -4625,7 +4625,7 @@ def analyze_shot_patterns(shots_file="output/shots_log.jsonl"):
         print(f"Error analyzing shot patterns: {e}")
         return {}
 
-def main(path="self2.mp4", input_frame_width=640, input_frame_height=360, max_frames=None):
+def main(path="michael.mp4", input_frame_width=640, input_frame_height=360, max_frames=None):
     # Ensure virtual environment is being used
     ensure_venv_usage()
     
@@ -4770,7 +4770,7 @@ def main(path="self2.mp4", input_frame_width=640, input_frame_height=360, max_fr
             print(" Pose model loaded on CPU")
         
         # Load ball detection model with aggressive optimizations
-        ballmodel = YOLO("trained-models/black_ball_selfv3.pt")
+        ballmodel = YOLO("trained-models/g-ball2(white_latest).pt")
         if torch.cuda.is_available():
             ballmodel.to(device)
             # Apply aggressive optimizations
