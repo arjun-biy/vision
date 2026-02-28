@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Result - Squash Analyzer</title>
+    <style>
+      body { font-family: system-ui, Arial, sans-serif; margin: 24px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      video { width: 100%; height: auto; background: #000; }
+      pre { white-space: pre-wrap; background: #f7f7f7; padding: 12px; border-radius: 8px; max-height: 70vh; overflow: auto; }
+      a { text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <p><a href="/">← Back</a></p>
+    <h1>Analysis Result</h1>
+
+    {% if job.running %}
+      <p>Job status: <strong>Running</strong> — refresh in a bit.</p>
+    {% elif job.error %}
+      <p>Job status: <strong style="color:#c00">Error</strong> — {{ job.error }}</p>
+    {% else %}
+      <p>Job status: <strong>Idle</strong></p>
+    {% endif %}
+
+    <div class="grid">
+      <div>
+        <h3>Annotated Video</h3>
+        {% if video_ready %}
+          <video controls src="/outputs/annotated.mp4?ts={{ job.ended_at or 0 }}"></video>
+          <p><a href="/outputs/annotated.mp4">Download MP4</a></p>
+        {% else %}
+          <p>Video not ready yet. Refresh this page after the job finishes.</p>
+        {% endif %}
+      </div>
+      <div>
+        <h3>Text Output (final.txt)</h3>
+        {% if final_text %}
+          <pre>{{ final_text }}</pre>
+        {% else %}
+          <p>No text output found yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+  </body>
+  </html>
+
+

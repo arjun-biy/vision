@@ -75,7 +75,7 @@ def plot_3d_court():
 
 def visualize_3d_positions(df):
     """Create 3D visualization of player positions and ball trajectory"""
-    cache_path = os.path.join(CACHE_DIR, "../static/3d_match_visualization.png")
+    cache_path = os.path.join(CACHE_DIR, "3d_match_visualization.png")
 
     # If cached visualization exists, return early
     if os.path.exists(cache_path):

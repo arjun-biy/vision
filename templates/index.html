@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Squash Analyzer</title>
+    <style>
+      body { font-family: system-ui, Arial, sans-serif; margin: 24px; }
+      .card { border: 1px solid #ddd; padding: 16px; border-radius: 8px; max-width: 720px; }
+      h1 { margin-top: 0; }
+      .muted { color: #777; }
+      .row { margin: 12px 0; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Squash Analyzer</h1>
+      <p class="muted">Upload a video to run player and ball tracking. Outputs will be written to <code>output/</code>.</p>
+
+      <form action="/upload" method="post" enctype="multipart/form-data">
+        <div class="row">
+          <input type="file" name="video" accept="video/*" required />
+        </div>
+        <div class="row">
+          <button type="submit">Analyze</button>
+        </div>
+      </form>
+
+      {% if job.running %}
+      <p>Job status: <strong>Running</strong></p>
+      {% elif job.error %}
+      <p>Job status: <strong style="color:#c00">Error</strong> — {{ job.error }}</p>
+      {% else %}
+      <p>Job status: <strong>Idle</strong></p>
+      {% endif %}
+
+      {% if last_ready %}
+      <p><a href="/result">View last result</a></p>
+      {% endif %}
+    </div>
+  </body>
+  </html>
+
+

@@ -1,0 +1,16 @@
+{
+  "rally_summary": {
+    "total_rallies": 0,
+    "p1_points": 0,
+    "p2_points": 0,
+    "avg_rally_duration": 0.0,
+    "avg_shots_per_rally": 0.0,
+    "longest_rally_s": 0,
+    "rallies": []
+  },
+  "total_bounces": 1075,
+  "avg_ball_speed_kmh": 120.1,
+  "max_ball_speed_kmh": 1518.5,
+  "court_lines_found": 0,
+  "shot_history_count": 0
+}
