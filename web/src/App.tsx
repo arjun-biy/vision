@@ -146,7 +146,8 @@ export default function App() {
         // Supabase not available or table missing — continue with local ID
         console.warn("Supabase createAnalysis failed, using local mode");
       }
-      setActiveAnalysisId(analysisId);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setActiveAnalysisId(analysisId as any);
 
       // 2. Upload video to Supabase Storage (if configured, non-blocking)
       if (isSupabaseConfigured) {

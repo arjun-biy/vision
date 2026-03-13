@@ -14,6 +14,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   Users,
+  Footprints,
+  Crosshair,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -31,6 +33,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatPanel } from "@/components/ChatPanel";
 
 import { fetchAnalysis, fetchAnalysisImages, getFlaskText, getFlaskStatus, updateAnalysis } from "@/lib/api";
+import { getApiBase } from "@/lib/apiBase";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import type { Analysis, AnalysisImage } from "@/types/supabase";
 
@@ -43,6 +46,10 @@ function getOutputImages(p1: string, p2: string) {
     { key: "shot_success_rate", label: "Shot Success Rate", icon: TrendingUp },
     { key: "t_position_distance", label: "T-Position Distance", icon: BarChart3 },
     { key: "ball_heatmap", label: "Ball Heatmap", icon: Target },
+    { key: "shot_origins", label: "Shot Origins", icon: Target },
+    { key: "zone_occupancy", label: "Player Zone Occupancy", icon: MapPin },
+    { key: "front_wall_hits", label: "Front Wall Hits", icon: Target },
+    { key: "floor_bounces", label: "Floor Bounces", icon: Target },
   ];
 }
 
@@ -79,7 +86,7 @@ export default function AnalysisPage() {
 
       // Load match summary from Flask
       try {
-        const res = await fetch("/api/match-summary");
+        const res = await fetch(`${getApiBase()}/api/match-summary`);
         const data = await res.json();
         if (data.ok) setMatchSummary(data.data);
       } catch {
@@ -88,7 +95,7 @@ export default function AnalysisPage() {
 
       // Load structured AI coaching context (real analysis data for chatbot)
       try {
-        const res = await fetch("/api/coaching-context");
+        const res = await fetch(`${getApiBase()}/api/coaching-context`);
         const data = await res.json();
         if (data.ok) setAiContext(data.context);
       } catch {
@@ -97,7 +104,7 @@ export default function AnalysisPage() {
 
       // Check which output images actually exist
       try {
-        const res = await fetch("/api/available-outputs");
+        const res = await fetch(`${getApiBase()}/api/available-outputs`);
         const data = await res.json();
         if (data.ok) {
           const imgFiles = (data.files as { name: string }[])
@@ -245,7 +252,7 @@ export default function AnalysisPage() {
   function getImageUrl(key: string): string {
     const sbImage = images.find((i) => i.image_type === key);
     if (sbImage) return sbImage.image_url;
-    return `/outputs/${key}.png`;
+    return `${getApiBase()}/outputs/${key}.png`;
   }
 
   // Check if an image key is available
@@ -511,9 +518,86 @@ export default function AnalysisPage() {
 
           {/* -- Visuals Tab -- */}
           <TabsContent value="visuals" className="space-y-6">
+            {/* T-position time stat card */}
+            <Card className="bg-white shadow-md">
+              <CardContent className="flex items-center gap-4 p-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-sky-100">
+                  <Target className="h-6 w-6 text-sky-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">T-position time</p>
+                  <p className="text-2xl font-bold">
+                    {matchSummary?.t_position_time != null
+                      ? `${Math.round(matchSummary.t_position_time as number)}%`
+                      : "--"}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Featured visuals: Player Heatmap | Front Wall Hits */}
             <div className="grid md:grid-cols-2 gap-6">
-              {outputImages.filter(({ key }) => isImageAvailable(key)).map(
-                ({ key, label, icon: Icon }) => (
+              {(isImageAvailable("zone_occupancy") || isImageAvailable("player_1_heatmap")) && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <Badge variant="secondary" className="mb-2 w-fit gap-1">
+                      <Footprints className="h-3 w-3" />
+                      Movement Patterns
+                    </Badge>
+                    <CardTitle className="text-base">Player Heatmap</CardTitle>
+                    <CardDescription>
+                      Visualize where you spend most of your time on the court during a match.
+                    </CardDescription>
+                    <p className="text-xs text-muted-foreground font-medium pt-1">
+                      {player2} Zone Occupancy with Heatmap
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <img
+                      src={getImageUrl(isImageAvailable("zone_occupancy") ? "zone_occupancy" : "player_1_heatmap")}
+                      alt="Player Zone Occupancy"
+                      className="w-full rounded-md border object-contain bg-muted/30 min-h-[200px]"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+              )}
+              {isImageAvailable("front_wall_hits") && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <Badge variant="secondary" className="mb-2 w-fit gap-1">
+                      <Crosshair className="h-3 w-3" />
+                      Shot Placement
+                    </Badge>
+                    <CardTitle className="text-base">Front Wall Hits</CardTitle>
+                    <CardDescription>
+                      Analyze where your shots are hitting the front wall to refine your accuracy.
+                    </CardDescription>
+                    <p className="text-xs text-muted-foreground font-medium pt-1">
+                      Front Wall Hits by Player
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <img
+                      src={getImageUrl("front_wall_hits")}
+                      alt="Front Wall Hits"
+                      className="w-full rounded-md border"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {/* All other visuals */}
+            <div className="grid md:grid-cols-2 gap-6">
+              {outputImages
+                .filter(({ key }) => isImageAvailable(key) && key !== "zone_occupancy" && key !== "front_wall_hits")
+                .map(({ key, label, icon: Icon }) => (
                   <Card key={key}>
                     <CardHeader className="pb-3">
                       <CardTitle className="flex items-center gap-2 text-base">
@@ -532,19 +616,18 @@ export default function AnalysisPage() {
                       />
                     </CardContent>
                   </Card>
-                )
-              )}
-              {availableImages.length === 0 && images.length === 0 && (
-                <Card className="md:col-span-2">
-                  <CardContent className="flex flex-col items-center justify-center py-12">
-                    <Image className="h-12 w-12 text-muted-foreground/40 mb-4" />
-                    <p className="text-muted-foreground text-sm">
-                      No visualizations available yet.
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
+                ))}
             </div>
+            {availableImages.length === 0 && images.length === 0 && (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <Image className="h-12 w-12 text-muted-foreground/40 mb-4" />
+                  <p className="text-muted-foreground text-sm">
+                    No visualizations available yet.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {/* -- Chat Tab -- */}

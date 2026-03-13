@@ -123,6 +123,7 @@ def push_to_supabase(analysis_id: str) -> None:
             "player_1_heatmap", "player_2_heatmap",
             "shot_distribution", "shot_success_rate",
             "t_position_distance", "ball_heatmap",
+            "shot_origins", "zone_occupancy", "front_wall_hits", "floor_bounces",
             "3d_heatmap_player_1", "3d_heatmap_player_2",
         ]
         for img_type in image_types:

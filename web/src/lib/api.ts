@@ -1,3 +1,4 @@
+import { getApiBase } from "./apiBase";
 import { getSupabase, isSupabaseConfigured } from "./supabase";
 import type { Analysis, AnalysisImage, ChatMessage } from "@/types/supabase";
 
@@ -139,7 +140,7 @@ export async function uploadFile(
 // ── Legacy Flask proxy (still used for video processing) ────
 
 export async function getFlaskStatus() {
-  const res = await fetch("/status", { cache: "no-store" });
+  const res = await fetch(`${getApiBase()}/status`, { cache: "no-store" });
   return res.json() as Promise<{
     running: boolean;
     error: string | null;
@@ -154,12 +155,12 @@ export async function uploadVideoToFlask(file: File, analysisId?: string) {
   if (analysisId) {
     form.append("analysis_id", analysisId);
   }
-  const res = await fetch("/upload", { method: "POST", body: form });
+  const res = await fetch(`${getApiBase()}/upload`, { method: "POST", body: form });
   if (!res.ok) throw new Error("Upload failed");
 }
 
 export async function getFlaskText() {
-  const res = await fetch("/result-text");
+  const res = await fetch(`${getApiBase()}/result-text`);
   return res.json() as Promise<{
     ok: boolean;
     text?: string;

@@ -151,6 +151,11 @@ def main(path="main_laptop.mp4", frame_width=640, frame_height=360):
 
         p1distancesfromT = []
         p2distancesfromT = []
+        p1_positions = []  # (x, y) ankle positions for zone occupancy
+        p2_positions = []
+        shot_origins_p1 = []  # (x, y) where P1 hit from
+        shot_origins_p2 = []
+        wall_hit_candidates = []  # (x, y, player) when ball near front wall
 
         courtref = np.int64(courtref)
         referenceimage = None
@@ -180,7 +185,7 @@ def main(path="main_laptop.mp4", frame_width=640, frame_height=360):
         heatmap_image = cv2.imread(heatmap_overlay_path)
         if heatmap_image is None:
             # Create a blank white image as heatmap canvas if it doesn't exist
-            heatmap_image = np.ones((height, width, 3), dtype=np.uint8) * 255
+            heatmap_image = np.ones((frame_height, frame_width, 3), dtype=np.uint8) * 255
             cv2.imwrite(heatmap_overlay_path, heatmap_image)
 
         ballxy = []
@@ -323,6 +328,26 @@ def main(path="main_laptop.mp4", frame_width=640, frame_height=360):
                 past_ball_pos, court_width=frame_width, court_height=frame_height,
                 previous_shot=previous_shot,
             )
+            # Record shot origin when a new shot is detected
+            if (previous_shot and shot_info and
+                (shot_info.get("display") != previous_shot.get("display") or
+                 (shot_info.get("direction") and shot_info.get("direction") != previous_shot.get("direction")))):
+                if past_ball_pos and len(past_ball_pos) >= 1:
+                    bx, by = past_ball_pos[-1][0], past_ball_pos[-1][1]
+                    if players.get(1) and players.get(2):
+                        try:
+                            p1ax = (players[1].get_latest_pose().xyn[0][15][0] + players[1].get_latest_pose().xyn[0][16][0]) / 2 * frame_width
+                            p1ay = (players[1].get_latest_pose().xyn[0][15][1] + players[1].get_latest_pose().xyn[0][16][1]) / 2 * frame_height
+                            p2ax = (players[2].get_latest_pose().xyn[0][15][0] + players[2].get_latest_pose().xyn[0][16][0]) / 2 * frame_width
+                            p2ay = (players[2].get_latest_pose().xyn[0][15][1] + players[2].get_latest_pose().xyn[0][16][1]) / 2 * frame_height
+                            d1 = (bx - p1ax) ** 2 + (by - p1ay) ** 2
+                            d2 = (bx - p2ax) ** 2 + (by - p2ay) ** 2
+                            if d1 < d2:
+                                shot_origins_p1.append([bx, by])
+                            else:
+                                shot_origins_p2.append([bx, by])
+                        except Exception:
+                            pass
             previous_shot = shot_info
             type_of_shot = [shot_info.get("direction", ""), shot_info.get("height", "")]
 
@@ -360,6 +385,26 @@ def main(path="main_laptop.mp4", frame_width=640, frame_height=360):
             if running_frame % 10 == 0:
                 bounces_this_frame = detect_bounces(past_ball_pos, frame_width, frame_height)
                 all_bounces.extend(bounces_this_frame)
+
+            # ── Wall hit candidates: ball near front wall (for front wall hits viz) ──
+            front_wall_threshold = int(frame_height * 0.12) or 30
+            if past_ball_pos and len(past_ball_pos) >= 2:
+                bx, by = past_ball_pos[-1][0], past_ball_pos[-1][1]
+                if by < front_wall_threshold and 0 < bx < frame_width:
+                    player = 0
+                    if players.get(1) and players.get(2):
+                        try:
+                            p1ax = (players[1].get_latest_pose().xyn[0][15][0] + players[1].get_latest_pose().xyn[0][16][0]) / 2 * frame_width
+                            p1ay = (players[1].get_latest_pose().xyn[0][15][1] + players[1].get_latest_pose().xyn[0][16][1]) / 2 * frame_height
+                            p2ax = (players[2].get_latest_pose().xyn[0][15][0] + players[2].get_latest_pose().xyn[0][16][0]) / 2 * frame_width
+                            p2ay = (players[2].get_latest_pose().xyn[0][15][1] + players[2].get_latest_pose().xyn[0][16][1]) / 2 * frame_height
+                            d1 = (bx - p1ax) ** 2 + (by - p1ay) ** 2
+                            d2 = (bx - p2ax) ** 2 + (by - p2ay) ** 2
+                            player = 1 if d1 < d2 else 2
+                        except Exception:
+                            pass
+                    if running_frame % 5 == 0:  # Subsample to avoid duplicates
+                        wall_hit_candidates.append({"x": bx, "y": by, "player": player})
 
             # ── Draw court lines ──
             if court_lines_detected:
@@ -477,6 +522,8 @@ def main(path="main_laptop.mp4", frame_width=640, frame_height=360):
                     )
                     p1distancesfromT.append(p1distancefromT)
                     p2distancesfromT.append(p2distancefromT)
+                    p1_positions.append((avgpx1, avgpy1))
+                    p2_positions.append((avgpx2, avgpy2))
                     text_p1t = f"P1 distance from T: {p1distancesfromT[-1]}"
                     text_p2t = f"P2 distance from T: {p2distancesfromT[-1]}"
                     cv2.putText(
@@ -911,9 +958,9 @@ def main(path="main_laptop.mp4", frame_width=640, frame_height=360):
             print("Saved player heatmaps")
 
             # 2. Ball heatmap
-            ball_heat = np.zeros((height, width), dtype=np.float32)
+            ball_heat = np.zeros((frame_height, frame_width), dtype=np.float32)
             for bx, by, *_ in ballxy:
-                if 0 <= bx < width and 0 <= by < height:
+                if 0 <= bx < frame_width and 0 <= by < frame_height:
                     cv2.circle(ball_heat, (int(bx), int(by)), 8, 1.0, -1)
             ball_heat_blur = cv2.GaussianBlur(ball_heat, (51, 51), 0)
             ball_heat_norm = cv2.normalize(ball_heat_blur, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
@@ -959,7 +1006,272 @@ def main(path="main_laptop.mp4", frame_width=640, frame_height=360):
                 plt.close()
                 print("Saved T-position distance chart")
 
-            # 6. Match data summary JSON
+            # Shot Origins
+            if shot_origins_p1 or shot_origins_p2:
+                fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+                for ax, points, color, label in [
+                    (axes[0], shot_origins_p1, "blue", "Player 1"),
+                    (axes[1], shot_origins_p2, "red", "Player 2"),
+                ]:
+                    if points:
+                        xs = [p[0] for p in points]
+                        ys = [p[1] for p in points]
+                        ax.scatter(xs, ys, c=color, alpha=0.6, s=30)
+                    ax.set_xlim(0, frame_width)
+                    ax.set_ylim(frame_height, 0)
+                    ax.set_xlabel("X (pixels)")
+                    ax.set_ylabel("Y (pixels)")
+                    ax.set_title(f"{label} Shot Origins")
+                    ax.set_aspect("equal")
+                plt.suptitle("Shot Origins")
+                plt.tight_layout()
+                plt.savefig("output/shot_origins.png", bbox_inches="tight")
+                plt.close()
+                print("Saved shot origins")
+
+            # Zone occupancy (6 zones, court coords when possible, bar chart fallback)
+            COURT_W, COURT_L = 6.4, 9.75
+
+            def _court_zone(cx, cy):
+                """Court coords to zone: 0-5. Court x 0-6.4, y 0-9.75. Front=high y."""
+                if not (0 <= cx <= COURT_W and 0 <= cy <= COURT_L):
+                    return -1
+                col = 0 if cx < COURT_W / 2 else 1
+                row = 0 if cy >= 2 * COURT_L / 3 else (1 if cy >= COURT_L / 3 else 2)
+                return row * 2 + col
+
+            def _pixel_zone(px, py):
+                """Pixel coords to zone fallback. Top of frame = front."""
+                col = 0 if px < frame_width / 2 else 1
+                row = 0 if py < frame_height / 3 else (1 if py < 2 * frame_height / 3 else 2)
+                return row * 2 + col
+
+            p1_counts = [0] * 6
+            p2_counts = [0] * 6
+            p1_court = []
+            p2_court = []
+
+            for (px, py) in p1_positions:
+                try:
+                    pt = Functions.pixel_to_3d([px, py], homography, reference_points_3d)
+                    cx, cy = pt[0], pt[1]
+                    if 0 <= cx <= COURT_W and 0 <= cy <= COURT_L:
+                        zi = _court_zone(cx, cy)
+                        if zi >= 0:
+                            p1_counts[zi] += 1
+                            p1_court.append((cx, cy))
+                except Exception:
+                    zi = _pixel_zone(px, py)
+                    p1_counts[zi] += 1
+
+            for (px, py) in p2_positions:
+                try:
+                    pt = Functions.pixel_to_3d([px, py], homography, reference_points_3d)
+                    cx, cy = pt[0], pt[1]
+                    if 0 <= cx <= COURT_W and 0 <= cy <= COURT_L:
+                        zi = _court_zone(cx, cy)
+                        if zi >= 0:
+                            p2_counts[zi] += 1
+                            p2_court.append((cx, cy))
+                except Exception:
+                    zi = _pixel_zone(px, py)
+                    p2_counts[zi] += 1
+
+            if p1_positions or p2_positions:
+                zone_labels = ["Top-L", "Top-R", "Mid-L", "Mid-R", "Bot-L", "Bot-R"]
+                zone_centers = [(1.6, 8.1), (4.8, 8.1), (1.6, 4.9), (4.8, 4.9), (1.6, 1.6), (4.8, 1.6)]
+                p1_total = max(1, sum(p1_counts))
+                p2_total = max(1, sum(p2_counts))
+
+                fig, ax = plt.subplots(figsize=(9, 8))
+                ax.set_xlim(0, COURT_W)
+                ax.set_ylim(COURT_L, 0)
+                ax.set_xlabel("X (meters)")
+                ax.set_ylabel("Y (meters)")
+                ax.set_aspect("equal")
+
+                # Court grid
+                ax.axhline(y=COURT_L / 3, color="black", linewidth=2)
+                ax.axhline(y=2 * COURT_L / 3, color="black", linewidth=2)
+                ax.axvline(x=COURT_W / 2, color="black", linewidth=2)
+                for x in [0, COURT_W / 2, COURT_W]:
+                    ax.axvline(x=x, color="gold", linewidth=1, alpha=0.6)
+                for y in [0, COURT_L / 3, 2 * COURT_L / 3, COURT_L]:
+                    ax.axhline(y=y, color="gold", linewidth=1, alpha=0.6)
+
+                # Heatmap from court positions (use P2 if available, else P1, else combined)
+                court_positions = p2_court if p2_court else (p1_court if p1_court else [
+                    (px / frame_width * COURT_W, (1 - py / frame_height) * COURT_L)
+                    for px, py in (p2_positions if p2_positions else p1_positions)
+                ])
+                if court_positions:
+                    heat_data = np.zeros((60, 50))
+                    for (cx, cy) in court_positions:
+                        ix = int(cx / COURT_W * 49)
+                        iy = int((COURT_L - cy) / COURT_L * 59)
+                        if 0 <= ix < 50 and 0 <= iy < 60:
+                            heat_data[iy, ix] += 1
+                    if heat_data.max() > 0:
+                        heat_data = np.log1p(heat_data)
+                        ax.imshow(
+                            heat_data, extent=[0, COURT_W, COURT_L, 0],
+                            aspect="auto", cmap="YlOrRd", alpha=0.5, origin="upper"
+                        )
+
+                # Zone percentages
+                for zi, (cx, cy) in enumerate(zone_centers):
+                    p1_pct = 100 * p1_counts[zi] / p1_total
+                    p2_pct = 100 * p2_counts[zi] / p2_total
+                    diff = p2_pct - p1_pct
+                    comp = f"{abs(diff):.1f}% {'more' if diff > 0 else 'less'} than P1"
+                    ax.text(cx, cy - 0.35, f"{p2_pct:.1f}%", fontsize=11, fontweight="bold",
+                            ha="center", color="white",
+                            bbox=dict(boxstyle="round,pad=0.25", facecolor="black", alpha=0.7))
+                    ax.text(cx, cy + 0.35, comp, fontsize=8, ha="center", color="#555")
+                ax.set_title("Player 2 Zone Occupancy with Heatmap")
+                plt.tight_layout()
+                plt.savefig("output/zone_occupancy.png", bbox_inches="tight", dpi=100)
+                plt.close()
+                print("Saved zone occupancy")
+            else:
+                # Fallback: simple court + placeholder when no position data
+                fig, ax = plt.subplots(figsize=(9, 8))
+                ax.set_xlim(0, COURT_W)
+                ax.set_ylim(COURT_L, 0)
+                ax.axhline(y=COURT_L / 3, color="black", linewidth=2)
+                ax.axhline(y=2 * COURT_L / 3, color="black", linewidth=2)
+                ax.axvline(x=COURT_W / 2, color="black", linewidth=2)
+                ax.set_xlabel("X (meters)")
+                ax.set_ylabel("Y (meters)")
+                ax.set_title("Player Zone Occupancy")
+                ax.text(COURT_W / 2, COURT_L / 2, "No position data\n(Run full video analysis)",
+                        ha="center", va="center", fontsize=12, color="gray")
+                plt.tight_layout()
+                plt.savefig("output/zone_occupancy.png", bbox_inches="tight", dpi=100)
+                plt.close()
+                print("Saved zone occupancy (placeholder)")
+
+            # Front wall hits (bounces + ball-at-front candidates, Service/Tin lines)
+            wall_w, wall_h = 6.4, 4.57
+            p1_hits, p2_hits, unattrib = [], [], []
+
+            def _add_wall_hit(x_px, y_px, player):
+                wx = x_px / frame_width * wall_w
+                # y_px small = top of frame = top of wall. Map 0-60px -> 4.57-0m
+                denom = max(40, int(frame_height * 0.15))
+                wy = wall_h * (1 - min(1, y_px / denom))
+                wy = max(0, min(wall_h, wy))
+                if player == 1:
+                    p1_hits.append((wx, wy))
+                elif player == 2:
+                    p2_hits.append((wx, wy))
+                else:
+                    unattrib.append((wx, wy))
+
+            for b in all_bounces:
+                if b.get("type") == "front_wall":
+                    px, py = b["x"], b["y"]
+                    pl = 1 if px < frame_width * 0.4 else (2 if px > frame_width * 0.6 else 0)
+                    _add_wall_hit(px, py, pl)
+
+            for w in wall_hit_candidates:
+                _add_wall_hit(w["x"], w["y"], w.get("player", 0))
+
+            all_wall = p1_hits + p2_hits + unattrib
+            if all_wall:
+                fig, ax = plt.subplots(figsize=(8, 6))
+                if p1_hits:
+                    ax.scatter([p[0] for p in p1_hits], [p[1] for p in p1_hits],
+                               c="#2563eb", alpha=0.75, s=55, label=f"Player 1 ({len(p1_hits)} hits)", zorder=3, edgecolors="white")
+                if p2_hits:
+                    ax.scatter([p[0] for p in p2_hits], [p[1] for p in p2_hits],
+                               c="#dc2626", alpha=0.75, s=55, label=f"Player 2 ({len(p2_hits)} hits)", zorder=3, edgecolors="white")
+                if unattrib:
+                    ax.scatter([p[0] for p in unattrib], [p[1] for p in unattrib],
+                               c="gray", marker="x", s=70, linewidths=2, label=f"Unattributed ({len(unattrib)} hits)", zorder=3)
+                ax.axhline(y=1.78, color="black", linewidth=2, label="Service Line", zorder=1)
+                ax.axhline(y=0.48, color="black", linewidth=2, label="Tin Line", zorder=1)
+                ax.set_xlim(0, wall_w)
+                ax.set_ylim(0, wall_h)
+                ax.set_xlabel("X (meters)")
+                ax.set_ylabel("Y (meters)")
+                ax.set_title("Front Wall Hits by Player")
+                ax.legend(loc="upper right", fontsize=9)
+                ax.set_aspect("equal")
+                plt.tight_layout()
+                plt.savefig("output/front_wall_hits.png", bbox_inches="tight", dpi=100)
+                plt.close()
+                print("Saved front wall hits")
+            elif ballxy:
+                # Fallback: use ball positions near front as proxy
+                front_balls = [(bx, by) for bx, by, _ in ballxy if by < int(frame_height * 0.2)]
+                if front_balls:
+                    fig, ax = plt.subplots(figsize=(8, 6))
+                    xs = [b[0] / frame_width * wall_w for b in front_balls]
+                    ys = [wall_h * (1 - b[1] / max(40, frame_height * 0.2)) for b in front_balls]
+                    ax.scatter(xs, ys, c="#94a3b8", alpha=0.6, s=40, label=f"Ball at front wall (N={len(front_balls)})")
+                    ax.axhline(y=1.78, color="black", linewidth=2, label="Service Line")
+                    ax.axhline(y=0.48, color="black", linewidth=2, label="Tin Line")
+                    ax.set_xlim(0, wall_w)
+                    ax.set_ylim(0, wall_h)
+                    ax.set_xlabel("X (meters)")
+                    ax.set_ylabel("Y (meters)")
+                    ax.set_title("Front Wall Hits by Player")
+                    ax.legend()
+                    ax.set_aspect("equal")
+                    plt.tight_layout()
+                    plt.savefig("output/front_wall_hits.png", bbox_inches="tight", dpi=100)
+                    plt.close()
+                    print("Saved front wall hits (fallback)")
+            else:
+                # Placeholder when no wall hit data
+                fig, ax = plt.subplots(figsize=(8, 6))
+                ax.set_xlim(0, wall_w)
+                ax.set_ylim(0, wall_h)
+                ax.axhline(y=1.78, color="black", linewidth=2, label="Service Line")
+                ax.axhline(y=0.48, color="black", linewidth=2, label="Tin Line")
+                ax.set_xlabel("X (meters)")
+                ax.set_ylabel("Y (meters)")
+                ax.set_title("Front Wall Hits by Player")
+                ax.text(wall_w / 2, wall_h / 2, "No front wall hits detected\n(Run full video analysis)",
+                        ha="center", va="center", fontsize=12, color="gray")
+                plt.tight_layout()
+                plt.savefig("output/front_wall_hits.png", bbox_inches="tight", dpi=100)
+                plt.close()
+                print("Saved front wall hits (placeholder)")
+
+            # Floor bounces (with P1/P2 attribution by court side)
+            floor_bounces = [b for b in all_bounces if b.get("type") == "floor"]
+            if floor_bounces:
+                p1_floor = [(b["x"], b["y"]) for b in floor_bounces if b["x"] < frame_width / 2]
+                p2_floor = [(b["x"], b["y"]) for b in floor_bounces if b["x"] >= frame_width / 2]
+                fig, ax = plt.subplots(figsize=(8, 6))
+                if p1_floor:
+                    ax.scatter([p[0] for p in p1_floor], [p[1] for p in p1_floor],
+                               c="#2563eb", alpha=0.7, s=45, label=f"Player 1 (N={len(p1_floor)})")
+                if p2_floor:
+                    ax.scatter([p[0] for p in p2_floor], [p[1] for p in p2_floor],
+                               c="#dc2626", alpha=0.7, s=45, label=f"Player 2 (N={len(p2_floor)})")
+                ax.set_xlim(0, frame_width)
+                ax.set_ylim(frame_height, 0)
+                ax.set_xlabel("X (pixels)")
+                ax.set_ylabel("Y (pixels)")
+                ax.set_title("Floor Bounces by Player")
+                ax.legend()
+                plt.tight_layout()
+                plt.savefig("output/floor_bounces.png", bbox_inches="tight", dpi=100)
+                plt.close()
+                print("Saved floor bounces")
+
+            # 6. T-position time percentage (avg % of frames each player spent near the T)
+            t_position_threshold_px = 60
+            p1_at_t = sum(1 for d in p1distancesfromT if d <= t_position_threshold_px) if p1distancesfromT else 0
+            p2_at_t = sum(1 for d in p2distancesfromT if d <= t_position_threshold_px) if p2distancesfromT else 0
+            p1_pct = 100 * p1_at_t / max(1, len(p1distancesfromT)) if p1distancesfromT else 0
+            p2_pct = 100 * p2_at_t / max(1, len(p2distancesfromT)) if p2distancesfromT else 0
+            t_position_time = round((p1_pct + p2_pct) / 2, 0) if (p1distancesfromT or p2distancesfromT) else None
+
+            # 7. Match data summary JSON
             summary = {
                 "total_frames": running_frame,
                 "data_points": len(ballxy) + running_frame * 2,
@@ -969,6 +1281,7 @@ def main(path="main_laptop.mp4", frame_width=640, frame_height=360):
                 "rally_summary": rally_tracker.get_summary() if rally_tracker else {},
                 "avg_ball_speed_kmh": round(sum(ball_speeds) / max(1, len(ball_speeds)), 1) if ball_speeds else 0,
                 "max_ball_speed_kmh": round(max(ball_speeds), 1) if ball_speeds else 0,
+                "t_position_time": t_position_time,
             }
             with open("output/match_data_summary.json", "w") as mf:
                 _json.dump(summary, mf, indent=2, default=str)
